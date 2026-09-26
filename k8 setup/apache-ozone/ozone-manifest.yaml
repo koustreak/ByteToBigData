@@ -1,0 +1,356 @@
+# ==============================================================================
+# 📦 Production-Ready Kubernetes Manifest for Apache Ozone Cluster
+# ==============================================================================
+# Apply all resources:
+#   kubectl apply -f ozone-manifest.yaml
+#
+# Delete all resources:
+#   kubectl delete -f ozone-manifest.yaml
+# ==============================================================================
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ozone
+  labels:
+    name: ozone
+---
+# ------------------------------------------------------------------------------
+# 1. ConfigMap: Global Apache Ozone Configuration (ozone-site.xml)
+# ------------------------------------------------------------------------------
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ozone-config
+  namespace: ozone
+data:
+  ozone-site.xml: |
+    <?xml version="1.0" encoding="UTF-8"?>
+    <configuration>
+      <!-- SCM Configuration -->
+      <property>
+        <name>ozone.scm.names</name>
+        <value>ozone-scm.ozone.svc.cluster.local</value>
+      </property>
+      <property>
+        <name>ozone.scm.client.address</name>
+        <value>ozone-scm.ozone.svc.cluster.local:9860</value>
+      </property>
+      <property>
+        <name>ozone.scm.datanode.address</name>
+        <value>ozone-scm.ozone.svc.cluster.local:9861</value>
+      </property>
+      
+      <!-- OM Configuration -->
+      <property>
+        <name>ozone.om.address</name>
+        <value>ozone-manager.ozone.svc.cluster.local:9862</value>
+      </property>
+      <property>
+        <name>ozone.om.http-address</name>
+        <value>0.0.0.0:9874</value>
+      </property>
+
+      <!-- Local Cluster Replication (1 for Dev/KinD, 3 for Production) -->
+      <property>
+        <name>dfs.replication</name>
+        <value>1</value>
+      </property>
+      <property>
+        <name>ozone.replication</name>
+        <value>1</value>
+      </property>
+      
+      <!-- S3 Gateway -->
+      <property>
+        <name>ozone.s3g.http-address</name>
+        <value>0.0.0.0:9878</value>
+      </property>
+
+      <!-- Recon Observability Engine -->
+      <property>
+        <name>ozone.recon.http-address</name>
+        <value>0.0.0.0:9888</value>
+      </property>
+      <property>
+        <name>ozone.recon.address</name>
+        <value>ozone-recon.ozone.svc.cluster.local:9891</value>
+      </property>
+
+      <!-- Storage Metadata Directory -->
+      <property>
+        <name>ozone.metadata.dirs</name>
+        <value>/data/metadata</value>
+      </property>
+    </configuration>
+---
+# ------------------------------------------------------------------------------
+# 2. Service & StatefulSet: Storage Container Manager (SCM)
+# ------------------------------------------------------------------------------
+apiVersion: v1
+kind: Service
+metadata:
+  name: ozone-scm
+  namespace: ozone
+spec:
+  clusterIP: None
+  selector:
+    app: ozone-scm
+  ports:
+    - name: client
+      port: 9860
+    - name: datanode
+      port: 9861
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: ozone-scm
+  namespace: ozone
+spec:
+  serviceName: "ozone-scm"
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ozone-scm
+  template:
+    metadata:
+      labels:
+        app: ozone-scm
+    spec:
+      containers:
+        - name: scm
+          image: apache/ozone:1.4.0
+          imagePullPolicy: IfNotPresent
+          command: ["/bin/bash", "-c"]
+          args:
+            - |
+              if [ ! -f /data/metadata/scm-init.done ]; then
+                echo "Initializing Storage Container Manager..."
+                ozone scm --init || true
+                touch /data/metadata/scm-init.done
+              fi
+              ozone scm
+          ports:
+            - containerPort: 9860
+              name: client
+            - containerPort: 9861
+              name: datanode
+          volumeMounts:
+            - name: config
+              mountPath: /etc/hadoop/ozone-site.xml
+              subPath: ozone-site.xml
+            - name: metadata
+              mountPath: /data/metadata
+      volumes:
+        - name: config
+          configMap:
+            name: ozone-config
+        - name: metadata
+          emptyDir: {}
+---
+# ------------------------------------------------------------------------------
+# 3. Service & StatefulSet: Ozone Manager (OM)
+# ------------------------------------------------------------------------------
+apiVersion: v1
+kind: Service
+metadata:
+  name: ozone-manager
+  namespace: ozone
+spec:
+  clusterIP: None
+  selector:
+    app: ozone-manager
+  ports:
+    - name: rpc
+      port: 9862
+    - name: http
+      port: 9874
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: ozone-manager
+  namespace: ozone
+spec:
+  serviceName: "ozone-manager"
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ozone-manager
+  template:
+    metadata:
+      labels:
+        app: ozone-manager
+    spec:
+      containers:
+        - name: om
+          image: apache/ozone:1.4.0
+          imagePullPolicy: IfNotPresent
+          command: ["/bin/bash", "-c"]
+          args:
+            - |
+              echo "Waiting for SCM to start..."
+              sleep 10
+              if [ ! -f /data/metadata/om-init.done ]; then
+                echo "Initializing Ozone Manager..."
+                ozone om --init || true
+                touch /data/metadata/om-init.done
+              fi
+              ozone om
+          ports:
+            - containerPort: 9862
+              name: rpc
+            - containerPort: 9874
+              name: http
+          volumeMounts:
+            - name: config
+              mountPath: /etc/hadoop/ozone-site.xml
+              subPath: ozone-site.xml
+            - name: metadata
+              mountPath: /data/metadata
+      volumes:
+        - name: config
+          configMap:
+            name: ozone-config
+        - name: metadata
+          emptyDir: {}
+---
+# ------------------------------------------------------------------------------
+# 4. StatefulSet: Ozone Datanode (Block Storage Engine)
+# ------------------------------------------------------------------------------
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: ozone-datanode
+  namespace: ozone
+spec:
+  serviceName: "ozone-datanode"
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ozone-datanode
+  template:
+    metadata:
+      labels:
+        app: ozone-datanode
+    spec:
+      containers:
+        - name: datanode
+          image: apache/ozone:1.4.0
+          imagePullPolicy: IfNotPresent
+          command: ["ozone", "datanode"]
+          volumeMounts:
+            - name: config
+              mountPath: /etc/hadoop/ozone-site.xml
+              subPath: ozone-site.xml
+            - name: storage
+              mountPath: /data/storage
+      volumes:
+        - name: config
+          configMap:
+            name: ozone-config
+        - name: storage
+          emptyDir: {}
+---
+# ------------------------------------------------------------------------------
+# 5. Service & Deployment: Ozone S3 Gateway (Port 9878)
+# ------------------------------------------------------------------------------
+apiVersion: v1
+kind: Service
+metadata:
+  name: ozone-s3g
+  namespace: ozone
+spec:
+  type: ClusterIP
+  selector:
+    app: ozone-s3g
+  ports:
+    - name: s3-http
+      port: 9878
+      targetPort: 9878
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ozone-s3g
+  namespace: ozone
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ozone-s3g
+  template:
+    metadata:
+      labels:
+        app: ozone-s3g
+    spec:
+      containers:
+        - name: s3g
+          image: apache/ozone:1.4.0
+          imagePullPolicy: IfNotPresent
+          command: ["ozone", "s3g"]
+          ports:
+            - containerPort: 9878
+              name: s3-http
+          volumeMounts:
+            - name: config
+              mountPath: /etc/hadoop/ozone-site.xml
+              subPath: ozone-site.xml
+      volumes:
+        - name: config
+          configMap:
+            name: ozone-config
+---
+# ------------------------------------------------------------------------------
+# 6. Service & Deployment: Ozone Recon Dashboard (Port 9888)
+# ------------------------------------------------------------------------------
+apiVersion: v1
+kind: Service
+metadata:
+  name: ozone-recon
+  namespace: ozone
+spec:
+  type: ClusterIP
+  selector:
+    app: ozone-recon
+  ports:
+    - name: recon-web
+      port: 9888
+      targetPort: 9888
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ozone-recon
+  namespace: ozone
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ozone-recon
+  template:
+    metadata:
+      labels:
+        app: ozone-recon
+    spec:
+      containers:
+        - name: recon
+          image: apache/ozone:1.4.0
+          imagePullPolicy: IfNotPresent
+          command: ["ozone", "recon"]
+          ports:
+            - containerPort: 9888
+              name: recon-web
+          volumeMounts:
+            - name: config
+              mountPath: /etc/hadoop/ozone-site.xml
+              subPath: ozone-site.xml
+            - name: recon-meta
+              mountPath: /data/metadata
+      volumes:
+        - name: config
+          configMap:
+            name: ozone-config
+        - name: recon-meta
+          emptyDir: {}

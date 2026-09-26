@@ -1,0 +1,141 @@
+# ==============================================================================
+# ⚡ Bitnami Apache Spark Helm Chart - Production-Ready Values Reference
+# Chart Repository: https://charts.bitnami.com/bitnami
+# Chart Name: spark
+# ==============================================================================
+# Usage:
+#   helm install spark bitnami/spark -n spark --create-namespace -f spark-values.yaml
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# 0. Container Image & Version Pinning (Apache Spark 3.5.0)
+# ------------------------------------------------------------------------------
+image:
+  registry: docker.io
+  repository: bitnami/spark
+  tag: "3.5.0"
+  pullPolicy: IfNotPresent
+
+# ------------------------------------------------------------------------------
+# 1. Spark Master Node Configuration
+# ------------------------------------------------------------------------------
+master:
+  # Kubernetes Service configuration
+  service:
+    type: ClusterIP
+    ports:
+      cluster: 7077 # Spark RPC communication port
+      web: 8080     # Spark Master Web Dashboard
+
+  # Resources for local dev (Adjust for production)
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+
+  # Security Context (Non-Root UID 1001)
+  containerSecurityContext:
+    enabled: true
+    runAsUser: 1001
+    runAsNonRoot: true
+    allowPrivilegeEscalation: false
+
+  # --- ADVANCED: Ingress with TLS for Spark Master Web UI ---
+  # ingress:
+  #   enabled: false
+  #   ingressClassName: "nginx"
+  #   hostname: "spark-master.mycompany.internal"
+  #   annotations:
+  #     cert-manager.io/cluster-issuer: "letsencrypt-prod"
+  #     nginx.ingress.kubernetes.io/proxy-body-size: "128m"
+  #   tls:
+  #     - secretName: spark-master-tls
+  #       hosts:
+  #         - spark-master.mycompany.internal
+
+  # --- ADVANCED: Master High Availability (Zookeeper Quorum) ---
+  # In enterprise clusters, run multiple masters coordinated by Zookeeper:
+  # replicaCount: 3
+  # zookeeper:
+  #   enabled: true
+  #   replicaCount: 3
+
+# ------------------------------------------------------------------------------
+# 2. Spark Worker Nodes Configuration
+# ------------------------------------------------------------------------------
+worker:
+  # Default worker count for local testing
+  replicaCount: 1
+
+  # Resource allocations per worker pod
+  resources:
+    requests:
+      cpu: 500m
+      memory: 512Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+
+  # Internal Spark compute limits registered to Master
+  coreLimit: "1"
+  memoryLimit: "1024m"
+
+  # Container Security Context
+  containerSecurityContext:
+    enabled: true
+    runAsUser: 1001
+    runAsNonRoot: true
+    allowPrivilegeEscalation: false
+
+  # --- ADVANCED: Worker Autoscaling (HPA) ---
+  # autoscaling:
+  #   enabled: false
+  #   minReplicas: 2
+  #   maxReplicas: 10
+  #   targetCPUUtilizationPercentage: 80
+
+  # --- ADVANCED: Cloud Scheduling & Anti-Affinity Rules ---
+  # Ensures workers are spread across multiple physical nodes and use Spot instances
+  # affinity:
+  #   podAntiAffinity:
+  #     preferredDuringSchedulingIgnoredDuringExecution:
+  #       - weight: 100
+  #         podAffinityTerm:
+  #           labelSelector:
+  #             matchExpressions:
+  #               - key: app.kubernetes.io/component
+  #                 operator: In
+  #                 values: ["worker"]
+  #           topologyKey: "kubernetes.io/hostname"
+  # nodeSelector:
+  #   k8s.io/capacity-type: "spot"
+
+# ------------------------------------------------------------------------------
+# 3. Observability & Monitoring (Prometheus Metrics)
+# ------------------------------------------------------------------------------
+# metrics:
+#   enabled: false
+#   serviceMonitor:
+#     enabled: false
+#     namespace: "monitoring"
+#     interval: 30s
+
+# ------------------------------------------------------------------------------
+# 4. External Data Lake & Storage Configuration (S3 / MinIO / GCS)
+# ------------------------------------------------------------------------------
+# Inject custom Hadoop core-site.xml or spark-defaults.conf for S3A integration:
+# configOptions:
+#   -Dspark.hadoop.fs.s3a.impl=org.apache.hadoop.fs.s3a.S3AFileSystem
+#   -Dspark.hadoop.fs.s3a.fast.upload=true
+#   -Dspark.hadoop.fs.s3a.connection.maximum=100
+#   -Dspark.hadoop.fs.s3a.path.style.access=true # Required for MinIO
+
+# ------------------------------------------------------------------------------
+# 5. Network Security (NetworkPolicy)
+# ------------------------------------------------------------------------------
+# networkPolicy:
+#   enabled: false
+#   allowExternal: false

@@ -1,0 +1,335 @@
+# ==============================================================================
+# 🐘 Production-Grade Kubernetes Manifest for PostgreSQL (StatefulSet)
+# ==============================================================================
+# Apply all resources:
+#   kubectl apply -f postgres-manifest.yaml
+#
+# Delete all resources:
+#   kubectl delete -f postgres-manifest.yaml
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# 1. Namespace: Dedicated isolation boundary
+# ------------------------------------------------------------------------------
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: database
+  labels:
+    name: database
+---
+# ------------------------------------------------------------------------------
+# 2. ConfigMap: PostgreSQL Engine Parameter Tuning (postgresql.conf)
+# ------------------------------------------------------------------------------
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-config
+  namespace: database
+data:
+  custom-postgresql.conf: |
+    # Connection Settings
+    max_connections = 100
+    
+    # Memory Configuration (Tuned for ~1GB RAM container)
+    shared_buffers = 256MB
+    effective_cache_size = 768MB
+    maintenance_work_mem = 64MB
+    work_mem = 4MB
+    
+    # Write-Ahead Log (WAL) & Checkpoints
+    wal_buffers = 16MB
+    min_wal_size = 1GB
+    max_wal_size = 4GB
+    checkpoint_completion_target = 0.9
+    
+    # Query Planner Optimization
+    random_page_cost = 1.1
+    effective_io_concurrency = 200
+    default_statistics_target = 100
+    
+    # Logging Configuration
+    log_destination = 'stderr'
+    logging_collector = off
+    log_min_messages = warning
+    log_min_error_statement = error
+    log_min_duration_statement = 250 # Log slow queries > 250ms
+---
+# ------------------------------------------------------------------------------
+# 3. Secret: Database Credentials
+# ------------------------------------------------------------------------------
+apiVersion: v1
+kind: Secret
+metadata:
+  name: postgres-secret
+  namespace: database
+type: Opaque
+stringData:
+  POSTGRES_DB: "analytics_db"
+  POSTGRES_USER: "admin"
+  POSTGRES_PASSWORD: "SuperSecretPassword123!"
+  # In production, use External Secrets Operator to pull from AWS Secrets Manager / Vault
+---
+# ------------------------------------------------------------------------------
+# 4. Headless Service: Provides Stable DNS Network Identity for StatefulSet
+# ------------------------------------------------------------------------------
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-headless
+  namespace: database
+  labels:
+    app: postgres
+spec:
+  clusterIP: None
+  selector:
+    app: postgres
+  ports:
+    - name: postgresql
+      port: 5432
+      targetPort: 5432
+---
+# ------------------------------------------------------------------------------
+# 5. Client Service: ClusterIP for Microservices & DBeaver (port-forward / internal)
+# ------------------------------------------------------------------------------
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-service
+  namespace: database
+  labels:
+    app: postgres
+spec:
+  type: ClusterIP
+  selector:
+    app: postgres
+  ports:
+    - name: postgresql
+      port: 5432
+      targetPort: 5432
+---
+# ------------------------------------------------------------------------------
+# 6. StatefulSet: Production Database Workload Controller
+# ------------------------------------------------------------------------------
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+  namespace: database
+  labels:
+    app: postgres
+spec:
+  serviceName: "postgres-headless"
+  replicas: 1 # For HA, set up streaming replication or use CloudNativePG Operator
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      # Pod-level security context
+      securityContext:
+        fsGroup: 999 # Postgres default group
+        runAsUser: 999
+        runAsNonRoot: true
+
+      # --- ADVANCED: Anti-Affinity Rules (Uncomment for Multi-Node HA) ---
+      # affinity:
+      #   podAntiAffinity:
+      #     preferredDuringSchedulingIgnoredDuringExecution:
+      #       - weight: 100
+      #         podAffinityTerm:
+      #           labelSelector:
+      #             matchExpressions:
+      #               - key: app
+      #                 operator: In
+      #                 values: ["postgres"]
+      #           topologyKey: "kubernetes.io/hostname"
+
+      containers:
+        # Main PostgreSQL Database Engine
+        - name: postgres
+          image: postgres:16-alpine
+          imagePullPolicy: IfNotPresent
+          command:
+            - "postgres"
+            - "-c"
+            - "config_file=/etc/postgresql/custom-postgresql.conf"
+          ports:
+            - containerPort: 5432
+              name: postgresql
+          envFrom:
+            - secretRef:
+                name: postgres-secret
+          env:
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          resources:
+            requests:
+              cpu: 250m
+              memory: 256Mi
+            limits:
+              cpu: 1000m
+              memory: 1Gi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: postgres-data
+              mountPath: /var/lib/postgresql/data
+            - name: config-volume
+              mountPath: /etc/postgresql/custom-postgresql.conf
+              subPath: custom-postgresql.conf
+
+          # Health Checks
+          startupProbe:
+            exec:
+              command: ["psql", "-U", "admin", "-d", "analytics_db", "-c", "SELECT 1"]
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            failureThreshold: 15
+
+          readinessProbe:
+            exec:
+              command: ["psql", "-U", "admin", "-d", "analytics_db", "-c", "SELECT 1"]
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            failureThreshold: 3
+
+          livenessProbe:
+            exec:
+              command: ["psql", "-U", "admin", "-d", "analytics_db", "-c", "SELECT 1"]
+            initialDelaySeconds: 20
+            periodSeconds: 15
+            failureThreshold: 3
+
+        # --- ADVANCED: Prometheus Metrics Exporter Sidecar (Uncomment to enable) ---
+        # - name: postgres-exporter
+        #   image: prometheuscommunity/postgres-exporter:v0.15.0
+        #   ports:
+        #     - name: metrics
+        #       containerPort: 9187
+        #   env:
+        #     - name: DATA_SOURCE_NAME
+        #       value: "postgresql://admin:SuperSecretPassword123!@127.0.0.1:5432/analytics_db?sslmode=disable"
+        #   resources:
+        #     requests:
+        #       cpu: 50m
+        #       memory: 64Mi
+        #     limits:
+        #       cpu: 100m
+        #       memory: 128Mi
+
+      volumes:
+        - name: config-volume
+          configMap:
+            name: postgres-config
+
+  # Dynamic Persistent Storage Provisioning (1 volume per replica)
+  volumeClaimTemplates:
+    - metadata:
+        name: postgres-data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        # storageClassName: "standard" # In AWS: "gp3", In GCP: "standard-rwo"
+        resources:
+          requests:
+            storage: 5Gi
+
+---
+# ==============================================================================
+# 🌟 ADVANCED PRODUCTION COMPONENTS (Commented Out by Default)
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# 7. NetworkPolicy: Restrict Access to Database from Authorized Pods Only
+# ------------------------------------------------------------------------------
+# apiVersion: networking.k8s.io/v1
+# kind: NetworkPolicy
+# metadata:
+#   name: postgres-network-policy
+#   namespace: database
+# spec:
+#   podSelector:
+#     matchLabels:
+#       app: postgres
+#   policyTypes:
+#     - Ingress
+#   ingress:
+#     # Allow only pods with label 'app: backend-api' from namespace 'default'
+#     - from:
+#         - namespaceSelector:
+#             matchLabels:
+#               kubernetes.io/metadata.name: default
+#           podSelector:
+#             matchLabels:
+#               app: backend-api
+#       ports:
+#         - protocol: TCP
+#           port: 5432
+
+---
+# ------------------------------------------------------------------------------
+# 8. PodDisruptionBudget (PDB): Prevent Voluntary Downtime During Cluster Upgrades
+# ------------------------------------------------------------------------------
+# apiVersion: policy/v1
+# kind: PodDisruptionBudget
+# metadata:
+#   name: postgres-pdb
+#   namespace: database
+# spec:
+#   minAvailable: 1
+#   selector:
+#     matchLabels:
+#       app: postgres
+
+---
+# ------------------------------------------------------------------------------
+# 9. Automated Daily Backup CronJob (pg_dump to Persistent Volume or S3)
+# ------------------------------------------------------------------------------
+# apiVersion: batch/v1
+# kind: CronJob
+# metadata:
+#   name: postgres-backup-nightly
+#   namespace: database
+# spec:
+#   schedule: "0 2 * * *" # Every night at 2:00 AM UTC
+#   successfulJobsHistoryLimit: 3
+#   failedJobsHistoryLimit: 5
+#   jobTemplate:
+#     spec:
+#       template:
+#         spec:
+#           restartPolicy: OnFailure
+#           containers:
+#             - name: db-backup
+#               image: postgres:16-alpine
+#               command:
+#                 - /bin/sh
+#                 - -c
+#                 - |
+#                   echo "Starting database backup..."
+#                   BACKUP_FILE="/backups/backup_$(date +%Y%m%d_%H%M%S).sql.gz"
+#                   pg_dump -h postgres-service -U admin -d analytics_db | gzip > "$BACKUP_FILE"
+#                   echo "Backup complete: $BACKUP_FILE"
+#                   # Optional: aws s3 cp "$BACKUP_FILE" s3://my-company-db-backups/
+#               envFrom:
+#                 - secretRef:
+#                     name: postgres-secret
+#               env:
+#                 - name: PGPASSWORD
+#                   valueFrom:
+#                     secretKeyRef:
+#                       name: postgres-secret
+#                       key: POSTGRES_PASSWORD
+#               volumeMounts:
+#                 - name: backup-storage
+#                   mountPath: /backups
+#           volumes:
+#             - name: backup-storage
+#               persistentVolumeClaim:
+#                 claimName: postgres-backup-pvc

@@ -1,0 +1,317 @@
+# ==============================================================================
+# ⚡ Production-Grade Kubernetes Manifest for Apache Spark Cluster
+# ==============================================================================
+# Apply all resources:
+#   kubectl apply -f spark-manifest.yaml
+#
+# Delete all resources:
+#   kubectl delete -f spark-manifest.yaml
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# 1. Namespace: Dedicated isolation boundary
+# ------------------------------------------------------------------------------
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: spark
+  labels:
+    name: spark
+---
+# ------------------------------------------------------------------------------
+# 2. ServiceAccount & RBAC (Required for Spark Drivers to manage Executors)
+# ------------------------------------------------------------------------------
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: spark-sa
+  namespace: spark
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: spark-role
+  namespace: spark
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["*"]
+  - apiGroups: [""]
+    resources: ["services", "configmaps", "persistentvolumeclaims"]
+    verbs: ["create", "get", "delete", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: spark-rb
+  namespace: spark
+subjects:
+  - kind: ServiceAccount
+    name: spark-sa
+    namespace: spark
+roleRef:
+  kind: Role
+  name: spark-role
+  apiGroup: rbac.authorization.k8s.io
+---
+# ------------------------------------------------------------------------------
+# 3. ConfigMap: Global Spark Cluster Defaults (spark-defaults.conf)
+# ------------------------------------------------------------------------------
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: spark-config
+  namespace: spark
+data:
+  spark-defaults.conf: |
+    # High-performance Serializer
+    spark.serializer                 org.apache.spark.serializer.KryoSerializer
+    
+    # Driver & Executor Memory Overhead Buffers (Prevents OOMKilled)
+    spark.driver.memoryOverhead       256m
+    spark.executor.memoryOverhead     256m
+    
+    # Network Timeouts for Kubernetes Overlay Networks
+    spark.network.timeout            300s
+    spark.executor.heartbeatInterval 30s
+    
+    # Event Logging (Uncomment when History Server is configured)
+    # spark.eventLog.enabled           true
+    # spark.eventLog.dir               file:///tmp/spark-events
+---
+# ------------------------------------------------------------------------------
+# 4. Service: Spark Master Communication & Web Dashboard
+# ------------------------------------------------------------------------------
+apiVersion: v1
+kind: Service
+metadata:
+  name: spark-master
+  namespace: spark
+  labels:
+    app: spark-master
+spec:
+  type: ClusterIP
+  selector:
+    app: spark-master
+  ports:
+    - name: cluster
+      port: 7077
+      targetPort: 7077
+    - name: web
+      port: 8080
+      targetPort: 8080
+---
+# ------------------------------------------------------------------------------
+# 5. Deployment: Spark Master Controller
+# ------------------------------------------------------------------------------
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: spark-master
+  namespace: spark
+  labels:
+    app: spark-master
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: spark-master
+  template:
+    metadata:
+      labels:
+        app: spark-master
+    spec:
+      serviceAccountName: spark-sa
+      securityContext:
+        runAsUser: 1001
+        runAsGroup: 1001
+        runAsNonRoot: true
+      containers:
+        - name: spark-master
+          image: bitnami/spark:3.5.0
+          imagePullPolicy: IfNotPresent
+          command: ["/opt/bitnami/scripts/spark/entrypoint.sh", "/opt/bitnami/scripts/spark/run.sh"]
+          env:
+            - name: SPARK_MODE
+              value: "master"
+            - name: SPARK_MASTER_PORT
+              value: "7077"
+            - name: SPARK_MASTER_WEBUI_PORT
+              value: "8080"
+          ports:
+            - containerPort: 7077
+              name: cluster
+            - containerPort: 8080
+              name: web
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: 1000m
+              memory: 1Gi
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 8080
+            initialDelaySeconds: 20
+            periodSeconds: 15
+          volumeMounts:
+            - name: config-volume
+              mountPath: /opt/bitnami/spark/conf/spark-defaults.conf
+              subPath: spark-defaults.conf
+      volumes:
+        - name: config-volume
+          configMap:
+            name: spark-config
+---
+# ------------------------------------------------------------------------------
+# 6. StatefulSet / Deployment: Spark Compute Workers
+# ------------------------------------------------------------------------------
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: spark-worker
+  namespace: spark
+  labels:
+    app: spark-worker
+spec:
+  replicas: 2
+  serviceName: "spark-worker"
+  selector:
+    matchLabels:
+      app: spark-worker
+  template:
+    metadata:
+      labels:
+        app: spark-worker
+    spec:
+      serviceAccountName: spark-sa
+      securityContext:
+        runAsUser: 1001
+        runAsGroup: 1001
+        runAsNonRoot: true
+      containers:
+        - name: spark-worker
+          image: bitnami/spark:3.5.0
+          imagePullPolicy: IfNotPresent
+          command: ["/opt/bitnami/scripts/spark/entrypoint.sh", "/opt/bitnami/scripts/spark/run.sh"]
+          env:
+            - name: SPARK_MODE
+              value: "worker"
+            - name: SPARK_MASTER_URL
+              value: "spark://spark-master:7077"
+            - name: SPARK_WORKER_CORES
+              value: "1"
+            - name: SPARK_WORKER_MEMORY
+              value: "1024m"
+            - name: SPARK_WORKER_WEBUI_PORT
+              value: "8081"
+          ports:
+            - containerPort: 8081
+              name: web
+          resources:
+            requests:
+              cpu: 500m
+              memory: 512Mi
+            limits:
+              cpu: 1000m
+              memory: 1Gi
+          volumeMounts:
+            - name: config-volume
+              mountPath: /opt/bitnami/spark/conf/spark-defaults.conf
+              subPath: spark-defaults.conf
+      volumes:
+        - name: config-volume
+          configMap:
+            name: spark-config
+
+---
+# ==============================================================================
+# 🌟 ADVANCED PRODUCTION COMPONENTS (Commented Out by Default)
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# 7. Spark History Server (Persistent Web UI for completed jobs)
+# ------------------------------------------------------------------------------
+# apiVersion: apps/v1
+# kind: Deployment
+# metadata:
+#   name: spark-history-server
+#   namespace: spark
+# spec:
+#   replicas: 1
+#   selector:
+#     matchLabels:
+#       app: spark-history-server
+#   template:
+#     metadata:
+#       labels:
+#         app: spark-history-server
+#     spec:
+#       containers:
+#         - name: history-server
+#           image: bitnami/spark:3.5.0
+#           env:
+#             - name: SPARK_NO_DAEMONIZE
+#               value: "true"
+#           command: ["/opt/bitnami/spark/bin/spark-class", "org.apache.spark.deploy.history.HistoryServer"]
+#           ports:
+#             - containerPort: 18080
+#               name: history-web
+#           # In production, point to S3 or a shared PVC:
+#           # volumeMounts:
+#           #   - name: event-logs
+#           #     mountPath: /tmp/spark-events
+
+---
+# ------------------------------------------------------------------------------
+# 8. Declarative Production SparkApplication CRD (For Spark Operator)
+# ------------------------------------------------------------------------------
+# apiVersion: "sparkoperator.k8s.io/v1beta2"
+# kind: SparkApplication
+# metadata:
+#   name: batch-analytics-job
+#   namespace: spark
+# spec:
+#   type: Python
+#   mode: cluster
+#   image: "bitnami/spark:3.5.0"
+#   mainApplicationFile: "local:///opt/spark/jobs/main.py"
+#   sparkVersion: "3.5.0"
+#   driver:
+#     cores: 1
+#     memory: "1024m"
+#     serviceAccount: spark-sa
+#   executor:
+#     cores: 2
+#     instances: 4
+#     memory: "2048m"
+
+---
+# ------------------------------------------------------------------------------
+# 9. NetworkPolicy: Restrict Worker-to-Master and Client access
+# ------------------------------------------------------------------------------
+# apiVersion: networking.k8s.io/v1
+# kind: NetworkPolicy
+# metadata:
+#   name: spark-network-policy
+#   namespace: spark
+# spec:
+#   podSelector:
+#     matchLabels:
+#       app: spark-master
+#   ingress:
+#     - from:
+#         - podSelector:
+#             matchLabels:
+#               app: spark-worker
+#       ports:
+#         - protocol: TCP
+#           port: 7077

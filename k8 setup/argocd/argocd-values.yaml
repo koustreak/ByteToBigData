@@ -1,0 +1,153 @@
+# ==============================================================================
+# 🐙 ArgoCD Helm Chart - Production-Ready Values Reference
+# Chart Repository: https://argoproj.github.io/argo-helm
+# Chart Name: argo-cd
+# ==============================================================================
+# Usage:
+#   helm install argocd argo/argo-cd -n argocd --create-namespace -f argocd-values.yaml
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# 0. Container Image & Version Pinning (ArgoCD v2.13.3)
+# ------------------------------------------------------------------------------
+global:
+  domain: "argocd.local"
+  image:
+    repository: "quay.io/argoproj/argocd"
+    tag: "v2.13.3"
+    imagePullPolicy: IfNotPresent
+
+
+# ------------------------------------------------------------------------------
+# 2. ArgoCD API & Web Server (argocd-server)
+# ------------------------------------------------------------------------------
+server:
+  # Set to ClusterIP for local port-forwarding (or use Ingress for domain access)
+  service:
+    type: ClusterIP
+    servicePortHttp: 80
+    servicePortHttps: 443
+
+  # Resource requests & limits
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+  # Insecure mode: allows accessing Web UI via HTTP without browser SSL warnings
+  # Recommended for local KinD/Minikube port-forwarding:
+  insecure: true
+
+  # --- ADVANCED: Ingress with TLS & Automatic SSL (Cert-Manager) ---
+  # ingress:
+  #   enabled: false
+  #   ingressClassName: "nginx"
+  #   hostname: "argocd.mycompany.internal"
+  #   annotations:
+  #     cert-manager.io/cluster-issuer: "letsencrypt-prod"
+  #     nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
+  #   tls:
+  #     - secretName: argocd-server-tls
+  #       hosts:
+  #         - argocd.mycompany.internal
+
+  # --- ADVANCED: Production High-Availability Autoscaling ---
+  # autoscaling:
+  #   enabled: false
+  #   minReplicas: 2
+  #   maxReplicas: 5
+  #   targetCPUUtilizationPercentage: 80
+
+# ------------------------------------------------------------------------------
+# 3. Application Controller (Reconciliation Engine)
+# ------------------------------------------------------------------------------
+controller:
+  # Frequency at which ArgoCD checks Git repositories (default 180s = 3 minutes)
+  statusProcessors: 20
+  operationProcessors: 10
+
+  resources:
+    requests:
+      cpu: 250m
+      memory: 256Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+
+# ------------------------------------------------------------------------------
+# 4. Repo Server (Clones Git Repos & Generates Manifests)
+# ------------------------------------------------------------------------------
+repoServer:
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+
+  # --- ADVANCED: Production HA for Repo Server ---
+  # autoscaling:
+  #   enabled: false
+  #   minReplicas: 2
+  #   maxReplicas: 5
+
+# ------------------------------------------------------------------------------
+# 5. Redis Cache (Performance & State Storage)
+# ------------------------------------------------------------------------------
+redis:
+  enabled: true
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+
+  # --- ADVANCED: Production Redis High-Availability (Sentinel) ---
+  # In enterprise clusters, disable standalone redis and enable redis-ha:
+  # redis-ha:
+  #   enabled: false
+  #   haproxy:
+  #     enabled: true
+
+# ------------------------------------------------------------------------------
+# 6. Single Sign-On (SSO) with Dex / GitHub / Okta / Google
+# ------------------------------------------------------------------------------
+dex:
+  enabled: false
+  # config: |
+  #   connectors:
+  #     - type: github
+  #       id: github
+  #       name: GitHub
+  #       config:
+  #         clientID: $GITHUB_CLIENT_ID
+  #         clientSecret: $GITHUB_CLIENT_SECRET
+  #         orgs:
+  #           - name: my-company-org
+
+# ------------------------------------------------------------------------------
+# 7. Enterprise RBAC Policy (Role-Based Access Control)
+# ------------------------------------------------------------------------------
+configs:
+  rbac:
+    create: true
+    # policy.default: role:readonly
+    # policy.csv: |
+    #   p, role:developer, applications, sync, dev/*, allow
+    #   g, "devops-admins", role:admin
+
+# ------------------------------------------------------------------------------
+# 8. Monitoring & Observability (Prometheus Metrics)
+# ------------------------------------------------------------------------------
+# metrics:
+#   enabled: false
+#   serviceMonitor:
+#     enabled: false
+#     namespace: "monitoring"
+#     interval: 30s

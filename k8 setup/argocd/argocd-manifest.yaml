@@ -1,0 +1,166 @@
+# ==============================================================================
+# 🐙 Production-Grade ArgoCD GitOps Manifests
+# ==============================================================================
+# Apply all resources:
+#   kubectl apply -f argocd-manifest.yaml
+#
+# Delete all resources:
+#   kubectl delete -f argocd-manifest.yaml
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# 1. AppProject: Multi-Tenancy & Security Boundary
+# ------------------------------------------------------------------------------
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: platform-project
+  namespace: argocd
+spec:
+  description: "Platform engineering and core database workloads"
+  # Allowed source Git repositories
+  sourceRepos:
+    - "https://github.com/argoproj/argocd-example-apps.git"
+    - "https://github.com/koustreak/ByteToBigData.git"
+    - "*"
+  # Allowed destination clusters and namespaces
+  destinations:
+    - namespace: "default"
+      server: "https://kubernetes.default.svc"
+    - namespace: "database"
+      server: "https://kubernetes.default.svc"
+    - namespace: "spark"
+      server: "https://kubernetes.default.svc"
+  # Cluster-scoped resources this project is allowed to manage
+  clusterResourceWhitelist:
+    - group: ""
+      kind: Namespace
+  # Namespace-scoped resources allowed
+  namespaceResourceWhitelist:
+    - group: "*"
+      kind: "*"
+---
+# ------------------------------------------------------------------------------
+# 2. Application: Guestbook Quickstart Demo
+# ------------------------------------------------------------------------------
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: guestbook-demo
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: platform-project
+  source:
+    repoURL: "https://github.com/argoproj/argocd-example-apps.git"
+    targetRevision: HEAD
+    path: "guestbook"
+  destination:
+    server: "https://kubernetes.default.svc"
+    namespace: default
+  syncPolicy:
+    automated:
+      prune: true     # Automatically deletes resources in K8s if removed from Git
+      selfHeal: true  # Automatically reverts manual kubectl edits back to Git state
+    syncOptions:
+      - CreateNamespace=true
+---
+# ------------------------------------------------------------------------------
+# 3. Application: GitOps Deployment of ByteToBigData PostgreSQL
+# ------------------------------------------------------------------------------
+# This Application deploys the PostgreSQL database directly from this repository!
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: postgresql-database
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: platform-project
+  source:
+    repoURL: "https://github.com/koustreak/ByteToBigData.git"
+    targetRevision: main
+    path: "k8 setup/postgresql"
+  destination:
+    server: "https://kubernetes.default.svc"
+    namespace: database
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+---
+# ==============================================================================
+# 🌟 ADVANCED PRODUCTION COMPONENTS (Commented Out by Default)
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# 4. ApplicationSet: Multi-Environment GitOps Generator (Dev, Staging, Prod)
+# ------------------------------------------------------------------------------
+# apiVersion: argoproj.io/v1alpha1
+# kind: ApplicationSet
+# metadata:
+#   name: multi-env-services
+#   namespace: argocd
+# spec:
+#   generators:
+#     - list:
+#         elements:
+#           - env: dev
+#             cluster: "https://kubernetes.default.svc"
+#             targetRevision: develop
+#           - env: staging
+#             cluster: "https://staging-k8s.internal"
+#             targetRevision: main
+#           - env: production
+#             cluster: "https://prod-k8s.internal"
+#             targetRevision: main
+#   template:
+#     metadata:
+#       name: "{{env}}-api-service"
+#     spec:
+#       project: platform-project
+#       source:
+#         repoURL: "https://github.com/my-org/api-service.git"
+#         targetRevision: "{{targetRevision}}"
+#         path: "k8s/environments/{{env}}"
+#       destination:
+#         server: "{{cluster}}"
+#         namespace: "{{env}}"
+#       syncPolicy:
+#         automated:
+#           prune: true
+#           selfHeal: true
+
+---
+# ------------------------------------------------------------------------------
+# 5. Ingress with TLS: Secure Web UI Access
+# ------------------------------------------------------------------------------
+# apiVersion: networking.k8s.io/v1
+# kind: Ingress
+# metadata:
+#   name: argocd-server-ingress
+#   namespace: argocd
+#   annotations:
+#     cert-manager.io/cluster-issuer: letsencrypt-prod
+#     nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"
+# spec:
+#   ingressClassName: nginx
+#   rules:
+#     - host: argocd.mycompany.internal
+#       http:
+#         paths:
+#           - path: /
+#             pathType: Prefix
+#             backend:
+#               service:
+#                 name: argocd-server
+#                 port:
+#                   number: 443
+#   tls:
+#     - hosts:
+#         - argocd.mycompany.internal
+#       secretName: argocd-server-tls

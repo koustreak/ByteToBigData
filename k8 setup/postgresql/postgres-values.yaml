@@ -1,0 +1,246 @@
+# ==============================================================================
+# 🐘 Bitnami PostgreSQL Helm Chart - Production-Ready Values Reference
+# Chart Repository: https://charts.bitnami.com/bitnami
+# Chart Name: postgresql
+# ==============================================================================
+# Usage:
+#   helm install postgres bitnami/postgresql -n database --create-namespace -f postgres-values.yaml
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# 0. Container Image & Version Pinning (PostgreSQL 16.x)
+# ------------------------------------------------------------------------------
+image:
+  registry: docker.io
+  repository: bitnami/postgresql
+  tag: "16.4.0" # PostgreSQL 16 LTS
+  pullPolicy: IfNotPresent
+
+# ------------------------------------------------------------------------------
+# 1. Global & Authentication Settings
+# ------------------------------------------------------------------------------
+global:
+  postgresql:
+    auth:
+      # Application database name
+      database: "analytics_db"
+      # Application standard user
+      username: "admin"
+      # Password for the application user
+      password: "SuperSecretPassword123!"
+      # Superuser 'postgres' password
+      postgresPassword: "RootSecretPassword123!"
+
+      # --- ADVANCED: Production Secret Management (Vault / ExternalSecrets) ---
+      # In production, do NOT store plain text passwords here.
+      # Instead, reference a pre-existing Kubernetes Secret created by External Secrets Operator / Vault:
+      # existingSecret: "my-vault-db-secrets"
+      # secretKeys:
+      #   adminPasswordKey: "admin-password"
+      #   userPasswordKey: "user-password"
+      #   postgresPasswordKey: "postgres-password"
+      #   replicationPasswordKey: "replication-password"
+
+# ------------------------------------------------------------------------------
+# 2. Cluster Architecture & High Availability (HA)
+# ------------------------------------------------------------------------------
+# Options: 'standalone' (single primary node) or 'replication' (primary + read-only replicas)
+architecture: "standalone"
+
+# --- ADVANCED: Streaming Replication (Primary + Read Replicas) ---
+# To enable High-Availability with read-scaling, uncomment below and set architecture: "replication"
+# architecture: "replication"
+# readReplicas:
+#   replicaCount: 2
+#   persistence:
+#     enabled: true
+#     size: 10Gi
+#     storageClass: "standard"
+#   resources:
+#     requests:
+#       cpu: 250m
+#       memory: 512Mi
+#     limits:
+#       cpu: 1000m
+#       memory: 1Gi
+#   autoscaling:
+#     enabled: false
+#     minReplicas: 2
+#     maxReplicas: 5
+#     targetCPUUtilizationPercentage: 75
+
+# ------------------------------------------------------------------------------
+# 3. Primary Node Configuration
+# ------------------------------------------------------------------------------
+primary:
+  # Persistent Storage for the Primary Database
+  persistence:
+    enabled: true
+    size: 5Gi
+    # storageClass: "gp3" # Use 'standard' for KinD/Minikube, 'gp3' for AWS, 'standard-rwo' for GCP
+    accessModes:
+      - ReadWriteOnce
+
+  # Resource Requests & Limits (Essential for production QoS)
+  resources:
+    requests:
+      cpu: 250m
+      memory: 256Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+
+  # Kubernetes Service Configuration
+  service:
+    type: ClusterIP
+    ports:
+      postgresql: 5432
+    # In production, keep ClusterIP. Never use LoadBalancer for databases!
+    # annotations:
+    #   networking.gke.io/load-balancer-type: "Internal"
+
+  # Container Security Context (Least Privilege / Non-Root)
+  containerSecurityContext:
+    enabled: true
+    runAsUser: 1001
+    runAsGroup: 1001
+    runAsNonRoot: true
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: false
+    capabilities:
+      drop: ["ALL"]
+
+  # Pod Security Context
+  podSecurityContext:
+    enabled: true
+    fsGroup: 1001
+
+  # Health Probes
+  startupProbe:
+    enabled: true
+    initialDelaySeconds: 15
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 10
+
+  livenessProbe:
+    enabled: true
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 6
+
+  readinessProbe:
+    enabled: true
+    initialDelaySeconds: 5
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 6
+
+  # --- ADVANCED: High Availability Scheduling Rules ---
+  # Ensures Primary and Replicas are NEVER scheduled onto the same physical worker node
+  # affinity:
+  #   podAntiAffinity:
+  #     requiredDuringSchedulingIgnoredDuringExecution:
+  #       - labelSelector:
+  #           matchExpressions:
+  #             - key: app.kubernetes.io/name
+  #               operator: In
+  #               values:
+  #                 - postgresql
+  #         topologyKey: "kubernetes.io/hostname"
+  # nodeSelector:
+  #   workload-type: "database"
+  # tolerations:
+  #   - key: "dedicated"
+  #     operator: "Equal"
+  #     value: "database"
+  #     effect: "NoSchedule"
+
+  # --- ADVANCED: Custom PostgreSQL Configuration Tuning (postgresql.conf) ---
+  # Optimized for 1GB RAM / 1 vCPU environment (Adjust based on server specs)
+  # extendedConfiguration: |
+  #   max_connections = 100
+  #   shared_buffers = 256MB
+  #   effective_cache_size = 768MB
+  #   maintenance_work_mem = 64MB
+  #   checkpoint_completion_target = 0.9
+  #   wal_buffers = 16MB
+  #   default_statistics_target = 100
+  #   random_page_cost = 1.1
+  #   effective_io_concurrency = 200
+  #   work_mem = 2621kB
+  #   min_wal_size = 1GB
+  #   max_wal_size = 4GB
+  #   log_min_duration_statement = 250 # Log queries taking longer than 250ms
+
+# ------------------------------------------------------------------------------
+# 4. Connection Pooling (PgBouncer)
+# ------------------------------------------------------------------------------
+# PgBouncer keeps persistent connections open to Postgres while multiplexing
+# thousands of short-lived microservice connections.
+pgbouncer:
+  enabled: false
+  # replicaCount: 2
+  # maxClientConn: 1000
+  # defaultPoolSize: 20
+  # poolMode: "transaction"
+  # resources:
+  #   requests:
+  #     cpu: 100m
+  #     memory: 128Mi
+  #   limits:
+  #     cpu: 500m
+  #     memory: 256Mi
+
+# ------------------------------------------------------------------------------
+# 5. Monitoring & Observability (Prometheus Metrics)
+# ------------------------------------------------------------------------------
+# Exports PostgreSQL metrics on port 9187 for Prometheus & Grafana dashboards
+metrics:
+  enabled: false
+  # image:
+  #   registry: docker.io
+  #   repository: bitnami/postgres-exporter
+  #   tag: 0.15.0
+  # service:
+  #   annotations:
+  #     prometheus.io/scrape: "true"
+  #     prometheus.io/port: "9187"
+  # serviceMonitor:
+  #   enabled: false # Set true if using Prometheus Operator
+  #   namespace: "monitoring"
+  #   interval: 30s
+
+# ------------------------------------------------------------------------------
+# 6. Network Security (NetworkPolicy)
+# ------------------------------------------------------------------------------
+# Restricts network traffic so only authorized client pods can access port 5432
+networkPolicy:
+  enabled: false
+  # allowExternal: false
+  # explicitNamespacesSelector:
+  #   matchLabels:
+  #     kubernetes.io/metadata.name: "default"
+
+# ------------------------------------------------------------------------------
+# 7. In-Transit Encryption (TLS / SSL)
+# ------------------------------------------------------------------------------
+# Forces encrypted communication between clients/DBeaver and PostgreSQL
+tls:
+  enabled: false
+  # autoGenerated: true # Auto-generates self-signed TLS certs
+  # certificatesSecret: "my-postgres-tls-cert"
+  # certFilename: "tls.crt"
+  # certKeyFilename: "tls.key"
+
+# ------------------------------------------------------------------------------
+# 8. Automated Backups (WAL Archiving)
+# ------------------------------------------------------------------------------
+# backup:
+#   enabled: false
+#   cronjob:
+#     schedule: "0 2 * * *" # Daily at 2 AM
+#     storage:
+#       size: 20Gi
+#       storageClass: "standard"
