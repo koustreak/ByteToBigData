@@ -589,12 +589,12 @@ nodes:
 
 #### 🚀 Create the cluster using the configuration:
 ```bash
-kind create cluster --config kind-config.yaml
+kind create cluster --config "Big Data Project/infra setup/kind-config.yaml"
 ```
 
 **Expected output:**
 ```text
-Creating cluster "dev-cluster" ...
+Creating cluster "dev-cluster" ..
  • Ensuring node image (kindest/node:v1.32.0) 🖼
  • Preparing nodes 📦 📦 📦  
  • Writing configuration 📜 
@@ -738,8 +738,8 @@ helm uninstall my-web
 
 Now that your local Kubernetes cluster is operational, proceed to deploy production workloads:
 
-- 🐘 **[Deploying PostgreSQL & Connecting via DBeaver](postgresql/postgresql_install.md)**: Deploy a persistent PostgreSQL 16 database using Helm or native K8s manifests and connect from your local desktop using DBeaver GUI. (Includes [Production Access Patterns](postgresql/production_access_patterns.md)).
-- ⚡ **[Deploying Apache Spark on Kubernetes](spark/spark_install.md)**: Deploy an Apache Spark 3.5+ cluster, access the Web UI, and execute distributed batch & PySpark jobs using Helm and native manifests. (Includes [Production Spark Patterns](spark/production_access_patterns.md)).
-- 🐙 **[Deploying ArgoCD for GitOps Continuous Delivery](argocd/argocd_install.md)**: Deploy the CNCF-graduated ArgoCD engine, access the Web UI, and automate GitOps deployments with self-healing & drift detection. (Includes [Production GitOps Patterns](argocd/production_access_patterns.md)).
-- 🚦 **[Modern L4 + L7 Ingress: Traefik v3](traefik/traefik_install.md)**: Replace clunky NodePorts and eliminate `kubectl port-forward`! Route web dashboards (`spark.local`, `argocd.local`) AND route PostgreSQL TCP (`localhost:5432` to DBeaver) directly via Traefik. (Includes [Production Traefik Patterns](traefik/production_access_patterns.md)).
-- 📦 **[Deploying Apache Ozone (Next-Gen HDFS)](apache-ozone/ozone_install.md)**: Deploy a scalable distributed object store (OM, SCM, Datanodes, S3 Gateway, Recon Web UI) for big data analytics with Spark. (Includes [Production Ozone Patterns](apache-ozone/production_access_patterns.md)).
+- 🐘 **[Deploying PostgreSQL & Connecting via DBeaver](postgresql/postgresql_install.md)**: Deploy a persistent PostgreSQL 16 database using Helm or native K8s manifests and connect from your local desktop using DBeaver GUI.
+- ⚡ **[Deploying Apache Spark on Kubernetes](spark/spark_install.md)**: Deploy an Apache Spark 3.5+ cluster, access the Web UI, and execute distributed batch & PySpark jobs using Helm and native manifests.
+- 🐙 **[Deploying ArgoCD for GitOps Continuous Delivery](argocd/argocd_install.md)**: Deploy the CNCF-graduated ArgoCD engine, access the Web UI, and automate GitOps deployments with self-healing & drift detection.
+- 🚦 **[Modern L4 + L7 Ingress: Traefik v3](traefik/traefik_install.md)**: Replace clunky NodePorts and eliminate `kubectl port-forward`! Route web dashboards (`spark.local`, `argocd.local`) AND route PostgreSQL TCP (`localhost:5432` to DBeaver) directly via Traefik.
+- 📦 **[Deploying Apache Ozone (Next-Gen HDFS)](apache-ozone/ozone_install.md)**: Deploy a scalable distributed object store (OM, SCM, Datanodes, S3 Gateway, Recon Web UI) for big data analytics with Spark.

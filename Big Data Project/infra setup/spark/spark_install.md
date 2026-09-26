@@ -93,7 +93,7 @@ helm repo update
 ```
 
 ### Step 2: Create Custom `spark-values.yaml`
-Create a file named `spark-values.yaml` in your working directory (or use [`k8 setup/spark/spark-values.yaml`](spark-values.yaml)):
+Create a file named `spark-values.yaml` in your working directory (or use [`Big Data Project/infra setup/spark/spark-values.yaml`](spark-values.yaml)):
 
 ```yaml
 # spark-values.yaml
@@ -133,7 +133,7 @@ Deploy the Spark cluster into a dedicated `spark` namespace:
 kubectl create namespace spark
 
 # Deploy via Helm
-helm install spark bitnami/spark   --namespace spark   -f spark-values.yaml
+helm install spark bitnami/spark   --namespace spark   -f "Big Data Project/infra setup/spark/spark-values.yaml"
 ```
 
 **Expected output:**
@@ -151,7 +151,7 @@ TEST SUITE: None
 
 ## Method 2: Deploy with Plain Kubernetes Manifests
 
-If you prefer pure Kubernetes YAML manifests without using Helm, use our complete declarative file [`k8 setup/spark/spark-manifest.yaml`](spark-manifest.yaml).
+If you prefer pure Kubernetes YAML manifests without using Helm, use our complete declarative file [`Big Data Project/infra setup/spark/spark-manifest.yaml`](spark-manifest.yaml).
 
 ### Overview of the Manifest Components:
 - **`Namespace`**: `spark`
@@ -162,7 +162,7 @@ If you prefer pure Kubernetes YAML manifests without using Helm, use our complet
 
 ### Apply the Manifests:
 ```bash
-kubectl apply -f "k8 setup/spark/spark-manifest.yaml"
+kubectl apply -f "Big Data Project/infra setup/spark/spark-manifest.yaml"
 ```
 
 ---
@@ -361,5 +361,5 @@ kubectl delete namespace spark
 
 ### If using Manifests:
 ```bash
-kubectl delete -f "k8 setup/spark/spark-manifest.yaml"
+kubectl delete -f "Big Data Project/infra setup/spark/spark-manifest.yaml"
 ```

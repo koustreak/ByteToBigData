@@ -1,0 +1,96 @@
+# kind-config.yaml
+# Single-node Kubernetes cluster configuration optimized for Big Data ecosystem
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: bhoot
+nodes:
+  - role: control-plane
+    kubeadmConfigPatches:
+      - |
+        kind: InitConfiguration
+        nodeRegistration:
+          kubeletExtraArgs:
+            node-labels: "ingress-ready=true"
+    extraPortMappings:
+      # ========================================================================
+      # 🌐 1. Web & Ingress EntryPoints (HTTP / HTTPS / Traefik UI)
+      # All Web UIs (Spark, Airflow, Flink, Ozone Recon, Druid, Pinot) use Port 80!
+      # ========================================================================
+      - containerPort: 80
+        hostPort: 80
+        protocol: TCP
+
+      - containerPort: 443
+        hostPort: 443
+        protocol: TCP
+
+      - containerPort: 9000
+        hostPort: 9000
+        protocol: TCP
+
+      # ========================================================================
+      # 🗄️ 2. Databases & Storage TCP Ports (Layer 4 Direct Client Access)
+      # ========================================================================
+      # 🐘 PostgreSQL (DBeaver / App Drivers)
+      - containerPort: 5432
+        hostPort: 5432
+        protocol: TCP
+
+      # 🍃 MongoDB (Compass / Shell / Drivers)
+      - containerPort: 27017
+        hostPort: 27017
+        protocol: TCP
+
+      # 👁️ Cassandra (cqlsh / DataStax Drivers)
+      - containerPort: 9042
+        hostPort: 9042
+        protocol: TCP
+
+      # 🕸️ Neo4j (Bolt Protocol)
+      - containerPort: 7687
+        hostPort: 7687
+        protocol: TCP
+
+      # 📦 Apache Ozone (S3 Gateway Endpoint for AWS CLI / Boto3 / S3A)
+      - containerPort: 9878
+        hostPort: 9878
+        protocol: TCP
+
+      # ========================================================================
+      # 📨 3. Messaging & Distributed Coordination
+      # ========================================================================
+      # ⚡ Apache Kafka (External Broker Port)
+      - containerPort: 9092
+        hostPort: 9092
+        protocol: TCP
+
+      # 🦁 Apache ZooKeeper (Client Port for Kafka / HBase / Pinot / Druid)
+      - containerPort: 2181
+        hostPort: 2181
+        protocol: TCP
+
+      # ========================================================================
+      # 📊 4. Big Data Analytics & Query Engines (Client / Query APIs)
+      # ========================================================================
+      # 🍷 Apache Pinot (Broker SQL Query API)
+      - containerPort: 8099
+        hostPort: 8099
+        protocol: TCP
+
+      # 💧 Apache Druid (Broker SQL Query HTTP Port)
+      - containerPort: 8082
+        hostPort: 8082
+        protocol: TCP
+
+      # ⚡ Apache Flink (JobManager RPC Client Port)
+      - containerPort: 6123
+        hostPort: 6123
+        protocol: TCP
+
+      # 🌿 Apache HBase (Master & RegionServer Client RPC)
+      - containerPort: 16000
+        hostPort: 16000
+        protocol: TCP
+      - containerPort: 16020
+        hostPort: 16020
+        protocol: TCP

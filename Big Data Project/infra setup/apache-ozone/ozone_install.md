@@ -118,7 +118,7 @@ Before starting, ensure you have:
 Apply our complete, pre-configured manifest [`ozone-manifest.yaml`](ozone-manifest.yaml):
 
 ```bash
-kubectl apply -f "k8 setup/apache-ozone/ozone-manifest.yaml"
+kubectl apply -f "Big Data Project/infra setup/apache-ozone/ozone-manifest.yaml"
 ```
 
 ---
@@ -221,7 +221,7 @@ aws --endpoint-url http://localhost:9878 s3 ls
 aws --endpoint-url http://localhost:9878 s3 mb s3://spark-data
 
 # Upload a local file via S3 API
-aws --endpoint-url http://localhost:9878 s3 cp "k8 setup/kind-config.yaml" s3://spark-data/kind-config.yaml
+aws --endpoint-url http://localhost:9878 s3 cp "Big Data Project/infra setup/kind-config.yaml" s3://spark-data/kind-config.yaml
 
 # Download the file back
 aws --endpoint-url http://localhost:9878 s3 cp s3://spark-data/kind-config.yaml downloaded-test.yaml
@@ -288,5 +288,5 @@ read_df.show()
 
 To completely remove Apache Ozone from your cluster:
 ```bash
-kubectl delete -f "k8 setup/apache-ozone/ozone-manifest.yaml"
+kubectl delete -f "Big Data Project/infra setup/apache-ozone/ozone-manifest.yaml"
 ```

@@ -82,7 +82,7 @@ spec:
   source:
     repoURL: "https://github.com/koustreak/ByteToBigData.git"
     targetRevision: main
-    path: "k8 setup/postgresql"
+    path: "Big Data Project/infra setup/postgresql"
   destination:
     server: "https://kubernetes.default.svc"
     namespace: database

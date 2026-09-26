@@ -5,32 +5,34 @@
 # ==============================================================================
 
 # ------------------------------------------------------------------------------
-# 0. Container Image & Version Pinning (Traefik v3.2.0)
+# 0. Container Image & Version Pinning (Traefik v3.6.0)
 # ------------------------------------------------------------------------------
 image:
   registry: docker.io
   repository: traefik
-  tag: "v3.2.0"
+  tag: "v3.6.0"
   pullPolicy: IfNotPresent
 
 # ------------------------------------------------------------------------------
 # 1. EntryPoints (Network Port Definitions)
 # ------------------------------------------------------------------------------
 ports:
-  # 🌐 Layer 7 HTTP EntryPoint (Web Apps, Spark, ArgoCD, Ozone)
+  # 🌐 Layer 7 HTTP EntryPoint (Traefik listens on 8000 inside, mapped to hostPort 80)
   web:
-    port: 80
+    port: 8000
     hostPort: 80
     expose:
       default: true
+    exposedPort: 80
     protocol: TCP
 
-  # 🔒 Layer 7 HTTPS EntryPoint (SSL / TLS)
+  # 🔒 Layer 7 HTTPS EntryPoint (Traefik listens on 8443 inside, mapped to hostPort 443)
   websecure:
-    port: 443
+    port: 8443
     hostPort: 443
     expose:
       default: true
+    exposedPort: 443
     protocol: TCP
 
   # 🐘 Layer 4 TCP EntryPoint: PostgreSQL (Zero Port-Forwarding to DBeaver!)
@@ -88,3 +90,7 @@ resources:
   limits:
     cpu: 500m
     memory: 512Mi
+
+deployment:
+  strategy:
+    type: Recreate

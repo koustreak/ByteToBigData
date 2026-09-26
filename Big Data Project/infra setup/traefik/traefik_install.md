@@ -1,6 +1,6 @@
 # 🚦 Modern L4 + L7 Ingress: Deploying Traefik v3 on Kubernetes & KinD
 
-[![Traefik](https://img.shields.io/badge/Traefik-v3.2+-24A1C1?logo=traefik&logoColor=white)](https://traefik.io/)
+[![Traefik](https://img.shields.io/badge/Traefik-v3.6+-24A1C1?logo=traefik&logoColor=white)](https://traefik.io/)
 [![Layer 4 + 7](https://img.shields.io/badge/Routing-L4%20TCP%20%2B%20L7%20HTTP-brightgreen)](#)
 [![Kubernetes](https://img.shields.io/badge/Kubernetes-IngressRoute%20CRD-326CE5?logo=kubernetes&logoColor=white)](https://kubernetes.io/)
 [![Helm](https://img.shields.io/badge/Helm-v3+-0F1689?logo=helm&logoColor=white)](https://helm.sh/)
@@ -104,13 +104,13 @@ helm repo update
 
 ### 2. Deploy Traefik into the `traefik` namespace:
 Use our pre-configured [`traefik-values.yaml`](traefik-values.yaml) which enables:
-- Pinned image `traefik:v3.2.0`
+- Pinned image `traefik:v3.6.0`
 - Entrypoints: `web` (80), `websecure` (443), `postgres` (5432 TCP), `traefik` (9000)
 - Real-time Web Dashboard enabled
 
 ```bash
 # Deploy Traefik
-helm install traefik traefik/traefik   --namespace traefik   --create-namespace   -f "k8 setup/traefik/traefik-values.yaml"
+helm install traefik traefik/traefik   --namespace traefik   --create-namespace   -f "Big Data Project/infra setup/traefik/traefik-values.yaml"
 ```
 
 ---
@@ -217,7 +217,7 @@ spec:
 
 Apply the routes:
 ```bash
-kubectl apply -f "k8 setup/traefik/traefik-routes.yaml"
+kubectl apply -f "Big Data Project/infra setup/traefik/traefik-routes.yaml"
 ```
 
 ---
@@ -284,7 +284,7 @@ Now for the ultimate test: **Connecting to PostgreSQL without `kubectl port-forw
 
 To uninstall Traefik:
 ```bash
-kubectl delete -f "k8 setup/traefik/traefik-routes.yaml"
+kubectl delete -f "Big Data Project/infra setup/traefik/traefik-routes.yaml"
 helm uninstall traefik -n traefik
 kubectl delete namespace traefik
 ```

@@ -116,7 +116,7 @@ Deploy into a dedicated `database` namespace:
 kubectl create namespace database
 
 # Deploy PostgreSQL via Helm
-helm install postgres bitnami/postgresql   --namespace database   -f postgres-values.yaml
+helm install postgres bitnami/postgresql   --namespace database   -f "Big Data Project/infra setup/postgresql/postgres-values.yaml"
 ```
 
 **Output:**
@@ -236,7 +236,7 @@ spec:
 
 Apply the manifest:
 ```bash
-kubectl apply -f postgres-manifest.yaml
+kubectl apply -f "Big Data Project/infra setup/postgresql/postgres-manifest.yaml"
 ```
 
 ---
@@ -475,19 +475,5 @@ kubectl delete namespace database
 
 ### If using Manifests:
 ```bash
-kubectl delete -f postgres-manifest.yaml
+kubectl delete -f "Big Data Project/infra setup/postgresql/postgres-manifest.yaml"
 ```
-
----
-
-## 🧭 Production Deep Dive
-
-Wondering how databases are accessed in real production (where `kubectl port-forward` is forbidden)?
-
-👉 **Read the comprehensive guide:** [🌐 Production Database Access Patterns & Kubernetes Networking](production_access_patterns.md)  
-Learn about:
-- In-Cluster Service-to-Service DNS (`ClusterIP`)
-- Remote DBeaver access via **Bastion Host / SSH Tunneling**
-- Corporate **Zero-Trust VPNs (Tailscale / ZTNA)**
-- Kubernetes Database Operators (**CloudNativePG**) vs Cloud-Managed DBs (AWS RDS / GCP Cloud SQL)
-- NetworkPolicies, Secrets management, and Connection Pooling (PgBouncer)
